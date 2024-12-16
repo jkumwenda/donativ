@@ -1,27 +1,17 @@
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 
 from routers import (
-    auth,
-    dashboard,
-    users,
-    roles,
-    permissions,
-    countries,
-    participants,
-    events,
-    organisers,
-    event_types,
+    auth, users, roles, permissions, countries, organisations
 )
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
-    title="ECSA CONFERENCE APP API",
-    description="East, Central and Southern Africa Conference App Programmable Application Interface",
+    title="Donativ APP API",
+    description="The Donativ API connects donors and recipients across countries. It allows recipients to create calls for donations with specific needs, while donors can browse or search calls by location, type, or recipient.",
     version="0.0.1",
     terms_of_service="http://example.com/terms/",
     contact={
-        "name": "HashTagIO",
+        "name": "Joel",
         "url": "https://github.com/jkumwenda",
         "email": "jkumwenda@gmail.com",
     },
@@ -31,8 +21,6 @@ app = FastAPI(
     },
 )
 
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-
 origins = [
     # settings.CLIENT_ORIGIN,
     "https://events.ecsaconm.org",
@@ -41,23 +29,17 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=origins,
-    # allow_credentials=True,
-    # allow_methods=["*"],
-    # allow_headers=["*"],
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(auth.router, tags=["Auth"], prefix="/auth")
-app.include_router(dashboard.router, tags=["Dashboard"], prefix="/dashboard")
-app.include_router(users.router, tags=["User"], prefix="/users")
-app.include_router(roles.router, tags=["Role"], prefix="/roles")
-app.include_router(permissions.router, tags=["Permission"], prefix="/permissions")
-app.include_router(countries.router, tags=["Country"], prefix="/countries")
-app.include_router(organisers.router, tags=["Organiser"], prefix="/organisers")
-app.include_router(event_types.router, tags=["Event Type"], prefix="/event_types")
-app.include_router(participants.router, tags=["Participants"], prefix="/participants")
-app.include_router(events.router, tags=["Events"], prefix="/events")
+app.include_router(users.router, tags=["Users"], prefix="/users")
+app.include_router(roles.router, tags=["Roles"], prefix="/roles")
+app.include_router(permissions.router, tags=[
+                   "Permissions"], prefix="/permissions")
+app.include_router(countries.router, tags=["Countries"], prefix="/countries")
+app.include_router(organisations.router, tags=[
+                   "Organisations"], prefix="/organisations")

@@ -1,54 +1,32 @@
 INSERT INTO permission (permission, permission_code, system_code)
-VALUES ('View Dashboard', 'VIEW_DASHBOARD', 'ECSA_CONF');
+VALUES ('Add User', 'ADD_USER', 'DONATIV'),
+       ('View User', 'VIEW_USER', 'DONATIV'),
+       ('Update User', 'UPDATE_USER', 'DONATIV'),
+       ('Delete User', 'DELETE_USER', 'DONATIV');
 
 INSERT INTO permission (permission, permission_code, system_code)
-VALUES ('Add User', 'ADD_USER', 'ECSA_CONF'),
-       ('View User', 'VIEW_USER', 'ECSA_CONF'),
-       ('Update User', 'UPDATE_USER', 'ECSA_CONF'),
-       ('Delete User', 'DELETE_USER', 'ECSA_CONF');
+VALUES ('View Roles', 'VIEW_ROLE', 'DONATIV'),
+       ('Add Role', 'ADD_ROLE', 'DONATIV'),
+       ('Update Role', 'UPDATE_ROLE', 'DONATIV'),
+       ('Delete Role', 'DELETE_ROLE', 'DONATIV');
 
 INSERT INTO permission (permission, permission_code, system_code)
-VALUES ('View Roles', 'VIEW_ROLE', 'ECSA_CONF'),
-       ('Add Role', 'ADD_ROLE', 'ECSA_CONF'),
-       ('Update Role', 'UPDATE_ROLE', 'ECSA_CONF'),
-       ('Delete Role', 'DELETE_ROLE', 'ECSA_CONF');
-
-INSERT INTO permission (permission, permission_code, system_code)
-VALUES ('View Permission', 'VIEW_PERMISSION', 'ECSA_CONF'),
-       ('Add Permission', 'ADD_PERMISSION', 'ECSA_CONF'),
-       ('Update Permission', 'UPDATE_PERMISSION', 'ECSA_CONF'),
-       ('Delete Permission', 'DELETE_PERMISSION', 'ECSA_CONF');
-
-INSERT INTO permission (permission, permission_code, system_code)
-VALUES ('View Organiser', 'VIEW_ORGANISER', 'ECSA_CONF'),
-       ('Add Organiser', 'ADD_ORGANISER', 'ECSA_CONF'),
-       ('Update Organiser', 'UPDATE_ORGANISER', 'ECSA_CONF'),
-       ('Delete Organiser', 'DELETE_ORGANISER', 'ECSA_CONF');
-
-INSERT INTO permission (permission, permission_code, system_code)
-VALUES ('View Event Type', 'VIEW_EVENT_TYPE', 'ECSA_CONF'),
-       ('Add Event Type', 'ADD_EVENT_TYPE', 'ECSA_CONF'),
-       ('Update Event Type', 'UPDATE_EVENT_TYPE', 'ECSA_CONF'),
-       ('Delete Event Type', 'DELETE_EVENT_TYPE', 'ECSA_CONF');  
-
-INSERT INTO permission (permission, permission_code, system_code)
-VALUES ('View Participant', 'VIEW_PARTICIPANT', 'ECSA_CONF'),
-       ('Add Participant', 'ADD_PARTICIPANT', 'ECSA_CONF'),
-       ('Update Participant', 'UPDATE_PARTICIPANT', 'ECSA_CONF'),
-       ('Delete Participant', 'DELETE_PARTICIPANT', 'ECSA_CONF'); 
+VALUES ('View Permission', 'VIEW_PERMISSION', 'DONATIV'),
+       ('Add Permission', 'ADD_PERMISSION', 'DONATIV'),
+       ('Update Permission', 'UPDATE_PERMISSION', 'DONATIV'),
+       ('Delete Permission', 'DELETE_PERMISSION', 'DONATIV');
 
 
 INSERT INTO permission (permission, permission_code, system_code)
-VALUES ('View Event', 'VIEW_EVENT', 'ECSA_CONF'),
-       ('Add Event', 'ADD_EVENT', 'ECSA_CONF'),
-       ('Update Event', 'UPDATE_EVENT', 'ECSA_CONF'),
-       ('Delete Event', 'DELETE_EVENT', 'ECSA_CONF'); 
+VALUES ('View Organisation', 'VIEW_ORGANISATION', 'DONATIV'),
+       ('Add Organisation', 'ADD_ORGANISATION', 'DONATIV'),
+       ('Update Organisation', 'UPDATE_ORGANISATION', 'DONATIV'),
+       ('Delete Organisation', 'DELETE_ORGANISATION', 'DONATIV');    
+       ('Organisation Verification Approval', 'ORGANISATION_VERIFICATION_APPROVAL', 'DONATIV');    
+
 
 
 INSERT INTO permission (permission, permission_code, system_code)
-VALUES ('Cancel Event Registration', 'CANCEL_EVENT_REGISTRATION', 'ECSA_CONF'),
-       ('Confirm Event Payment', 'CONFIRM_EVENT_PAYMENT', 'ECSA_CONF'),
-       ('Preview Badge', 'PREVIEW_BADGE', 'ECSA_CONF'),
-       ('Bulk Upload', 'BULK_UPLOAD', 'ECSA_CONF'),                           
-       ('Print Badge', 'PRINT_BADGE', 'ECSA_CONF'),                            
-       ('Download Participants List', 'DOWNLOAD_PARTICIPANT_LIST', 'ECSA_CONF');                            
+VALUES ('Organisation Verification Approval', 'ORGANISATION_VERIFICATION_APPROVAL', 'DONATIV');           
+
+          

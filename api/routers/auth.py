@@ -1,159 +1,252 @@
-import os
-from datetime import timedelta, datetime
-from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+import uuid
 from starlette import status
-from typing import List
-from passlib.hash import bcrypt
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import jwt, JWTError
-from models import Users, UserRole
-from schemas.ecsa_conf import TokenSchema, UserSchema, ResertPasswordSchema
-from database import get_db
-import utils
-from dotenv import load_dotenv
+from core.database import get_db
+from sqlalchemy.orm import Session
+from sqlalchemy.orm import joinedload
+import utils.mailer_util as mailer_util
+from datetime import datetime, timedelta
+from dependencies.dependency import Dependency
+from dependencies.auth_dependency import Auth
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
+from models.models import User, UserRole, PasswordReset, AccountVerification, Role, RolePermission
+from schemas.donativ import UserSchema, EmailSchema, PasswordResetSchema, VerificationTokenSchema, AuthSchema
 
-load_dotenv()
 router = APIRouter()
 
 
-oauth2_bearer = OAuth2PasswordBearer(tokenUrl="auth/login")
+def get_dependency(db: Session = Depends(get_db)) -> Dependency:
+    return Dependency(db)
+
+
+def get_auth_dependency(db: Session = Depends(get_db)) -> Auth:
+    return Auth(db)
 
 
 def get_object(id, db, model):
     data = db.query(model).filter(model.id == id).first()
     if data is None:
-        raise HTTPException(status_code=404, detail=f"ID {id} : Does not exist")
+        raise HTTPException(
+            status_code=404, detail=f"ID {id} : does not exist")
     return data
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
-async def create_user(user_schema: UserSchema, db: Session = Depends(get_db)):
-    existing_email = db.query(Users).filter(Users.email == user_schema.email).first()
-    if existing_email:
-        raise HTTPException(status_code=400, detail="Email already exists")
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register(user_schema: UserSchema, dependency: Dependency = Depends(get_dependency),  auth_dependencies: Auth = Depends(get_auth_dependency), db: Session = Depends(get_db)):
 
-    existing_phone = db.query(Users).filter(Users.phone == user_schema.phone).first()
-    if existing_phone:
-        raise HTTPException(status_code=400, detail="Phone number already exists")
+    auth_dependencies.check_existing_user(user_schema.email, user_schema.phone)
 
-    password = utils.generate_random_password()
+    role = auth_dependencies.get_user_role('User')
 
-    create_user_model = Users(
+    password = auth_dependencies.generate_random_password()
+    hashed_password = auth_dependencies.hash_password(password)
+
+    mailer_util.new_account_email(
+        user_schema.email, user_schema.firstname, password)
+
+    create_user_model = User(
         firstname=user_schema.firstname,
         lastname=user_schema.lastname,
         phone=user_schema.phone,
         email=user_schema.email,
-        hashed_password=bcrypt.hash(password),
-        verified=1,
+        hashed_password=hashed_password,
+        verified=False,
     )
-
     db.add(create_user_model)
     db.commit()
-    utils.new_account_email(user_schema.email, user_schema.firstname, password)
+
+    create_user_role_model = UserRole(
+        user_id=create_user_model.id, role_id=role.id)
+    db.add(create_user_role_model)
+    db.commit()
+
+    verification_token = str(uuid.uuid4())
+    expires_at = datetime.now() + timedelta(hours=1)
+
+    create_user_verification_model = AccountVerification(
+        user_id=create_user_model.id, verification_token=verification_token, expires_at=expires_at)
+    db.add(create_user_verification_model)
+    db.commit()
+
+    dependency.log_activity(create_user_model.id, 'USER_REGISTER',
+                            user_schema.email, '127.0.0.1', user_schema.email)
+
     return user_schema
 
 
 @router.post("/login")
 async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    auth_schema: OAuth2PasswordRequestForm = Depends(),
+    dependency: Dependency = Depends(get_dependency),
+    auth_dependencies: Auth = Depends(get_auth_dependency),
     db: Session = Depends(get_db),
 ):
-    user = authenticate_user(form_data.username, form_data.password, db)
+    user = auth_dependencies.authenticate_user(
+        auth_schema.username, auth_schema.password
+    )
+
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate user"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate user",
         )
 
-    token = create_access_token(user.email, user.id, timedelta(minutes=20))
+    user_with_permissions = (
+        db.query(User)
+        .options(
+            joinedload(User.user_roles)
+            .joinedload(UserRole.role)
+            .joinedload(Role.role_permissions)
+            .joinedload(RolePermission.permission)
+        )
+        .filter(User.id == user.id)
+        .first()
+    )
 
-    user_response = get_user_response(user)
+    if not user_with_permissions:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
-    permissions = get_user_permissions(db, user.id)
+    token = auth_dependencies.create_access_token(
+        user.email, user.id, timedelta(minutes=20))
+
+    dependency.log_activity(user.id, 'USER_LOGIN',
+                            user.email, '127.0.0.1', auth_schema.username)
+
+    permissions = [
+        {
+            "permission": rp.permission.permission,
+            "permission_code": rp.permission.permission_code,
+        }
+        for user_role in user_with_permissions.user_roles
+        for rp in user_role.role.role_permissions
+    ] if user_with_permissions.user_roles else []
 
     return {
+        "user": {
+            "id": user.id,
+            "firstname": user.firstname,
+            "lastname": user.lastname,
+            "phone": user.phone,
+            "email": user.email,
+            "verified": user.verified,
+        },
+        "permissions": permissions,
         "access_token": token,
         "token_type": "bearer",
-        "user": user_response,
-        "permissions": permissions,
     }
 
 
-def authenticate_user(email: str, password: str, db):
-    user = db.query(Users).filter(Users.email == email).first()
-    if not user:
-        return False
-    if not bcrypt.verify(password, user.hashed_password):
-        return False
-    return user
-
-
-def create_access_token(username: str, user_id: int, expires_delta: timedelta):
-    encode = {"sub": username, "id": user_id}
-    expires = datetime.utcnow() + expires_delta
-    encode.update({"exp": expires})
-    return jwt.encode(encode, os.getenv("SECRET_KEY"), algorithm=os.getenv("ALGORITHM"))
-
-
-async def get_current_user(token: Annotated[str, Depends(oauth2_bearer)]):
-    try:
-        payload = jwt.decode(
-            token, os.getenv("SECRET_KEY"), algorithms=[os.getenv("ALGORITHM")]
-        )
-        username: str = str(payload.get("sub"))
-        user_id: int = int(payload.get("id", 0))
-        if username is None or user_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Could not validate user",
-            )
-        return {"username": username, "id": user_id}
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate user"
-        )
-
-
-def get_user_response(user: Users) -> dict:
-    return {
-        "id": user.id,
-        "phone": user.phone,
-        "email": user.email,
-        "verified": user.verified,
-        "updated_at": user.updated_at,
-        "firstname": user.firstname,
-        "lastname": user.lastname,
-        "created_at": user.created_at,
-    }
-
-
-def get_user_permissions(db: Session, user_id: int) -> List[str]:
-    user_roles = db.query(UserRole).filter(UserRole.user_id == user_id).all()
-    permissions = [
-        rp.permission.permission_code
-        for user_role in user_roles
-        for rp in user_role.role.role_permission
-    ]
-    return permissions
-
-
-@router.post("/reset_password/", status_code=status.HTTP_201_CREATED)
-async def reset_password(
-    reset_password_schema: ResertPasswordSchema, db: Session = Depends(get_db)
+@router.post("/forgot-password", status_code=200)
+async def forgot_password(
+    email_schema: EmailSchema,
+    dependency: Dependency = Depends(get_dependency),
+    db: Session = Depends(get_db),
 ):
-    user_email_model = (
-        db.query(Users).filter(Users.email == reset_password_schema.username).first()
+    user = db.query(User).filter(
+        User.email == email_schema.email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Email not found")
+
+    reset_token = str(uuid.uuid4())
+    expires_at = datetime.now() + timedelta(hours=1)
+
+    reset_entry = PasswordReset(
+        user_id=user.id,
+        reset_token=reset_token,
+        expires_at=expires_at
     )
-
-    password = utils.generate_random_password()
-
-    user_email_model.hashed_password = bcrypt.hash(password)
-
+    db.add(reset_entry)
     db.commit()
-    db.refresh(user_email_model)
 
-    utils.password_change_email(
-        user_email_model.email, user_email_model.firstname, password
-    )
-    raise HTTPException(status_code=200, detail="Password updated successfully")
+    dependency.log_activity(user.id, 'USER_RESET_PASSWORD', user.email,
+                            '127.0.0.1', email_schema.email)
+    mailer_util.reset_password_request_email(
+        user.email, user.firstname, reset_token)
+
+    return {"message": "Password reset instructions sent to your email."}
+
+
+@router.post("/reset_password", status_code=status.HTTP_201_CREATED)
+async def reset_password(
+    password_reset_schema: PasswordResetSchema, dependency: Dependency = Depends(get_dependency), auth_dependencies: Auth = Depends(get_auth_dependency), db: Session = Depends(get_db)
+):
+    reset_entry = db.query(PasswordReset).filter(
+        PasswordReset.reset_token == password_reset_schema.rest_token,
+        PasswordReset.is_used == False,
+        PasswordReset.expires_at > datetime.now()
+    ).first()
+    if not reset_entry:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    user = db.query(User).filter(User.id == reset_entry.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.hashed_password = auth_dependencies.hash_password(
+        password_reset_schema.password)
+    db.commit()
+    reset_entry.is_used = True
+    db.commit()
+
+    dependency.log_activity(user.id, 'RESET_PASSWORD',
+                            user.email, '127.0.0.1', password_reset_schema.rest_token)
+
+    mailer_util.password_reset_email(user.email, user.firstname)
+
+    return {"message": "Password reset successfully"}
+
+
+@router.post("/verify-email")
+async def verify_email(verification_token_schema: VerificationTokenSchema, dependency: Dependency = Depends(get_dependency), db: Session = Depends(get_db)):
+    activation_entry = db.query(AccountVerification).filter(
+        AccountVerification.verification_token == verification_token_schema.verification_token,
+        AccountVerification.is_used == False,
+        AccountVerification.expires_at > datetime.now()
+    ).first()
+    if not activation_entry:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    user = db.query(User).filter(User.id == activation_entry.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.verified = True
+    db.commit()
+
+    activation_entry.is_used = True
+    db.commit()
+
+    dependency.log_activity(user.id, 'VERIFY_EMAIL',
+                            user.email, '127.0.0.1', verification_token_schema.verification_token)
+
+    mailer_util.account_verification_email(user.email, user.firstname)
+
+    return {"message": "Account verification was successful"}
+
+
+@router.post("/resend-verification")
+async def resend_verification(email_schema: EmailSchema, dependency: Dependency = Depends(get_dependency), db: Session = Depends(get_db)):
+
+    user = db.query(User).filter(
+        User.email == email_schema.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    verification_token = str(uuid.uuid4())
+    expires_at = datetime.now() + timedelta(hours=1)
+
+    create_user_verification_model = AccountVerification(
+        user_id=user.id, verification_token=verification_token, expires_at=expires_at)
+    db.add(create_user_verification_model)
+    db.commit()
+
+    dependency.log_activity(user.id, 'RESEND_VERIFICATION_EMAIL',
+                            user.email, '127.0.0.1', email_schema.email)
+
+    mailer_util.account_verification_request_email(
+        user.email, user.firstname, verification_token)
+
+    return {"message": "Account verification token was sent successfully"}

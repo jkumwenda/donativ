@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, Query
-from models import Country
-from sqlalchemy.orm import Session
-from database import get_db
-from sqlalchemy import or_
 import math
+from sqlalchemy import or_
+from core.database import get_db
+from models.models import Country
+from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Query
+
 
 router = APIRouter()
 
@@ -15,28 +16,16 @@ async def get_countries(
     limit: int = 10,
     search: str = "",
 ):
-    offset = (skip - 1) * limit
-    query = (
-        db.query(Country)
-        .filter(
-            or_(
-                Country.country.ilike(f"%{search}%"),
-                Country.short_code.ilike(f"%{search}%"),
-            )
-        )
-        .offset(offset)
-        .limit(limit)
-        .all()
+    search_filter = or_(
+        Country.country.ilike(f"%{search}%"),
+        Country.short_code.ilike(f"%{search}%"),
     )
-    total_count = (
-        db.query(Country)
-        .filter(
-            or_(
-                Country.country.ilike(f"%{search}%"),
-                Country.short_code.ilike(f"%{search}%"),
-            )
-        )
-        .count()
-    )
+
+    countries_query = db.query(Country).filter(search_filter)
+
+    total_count = countries_query.count()
+    countries = countries_query.offset(
+        (skip - 1) * limit).limit(limit).all()
+
     pages = math.ceil(total_count / limit)
-    return {"pages": pages, "data": query}
+    return {"pages": pages, "data": countries}
